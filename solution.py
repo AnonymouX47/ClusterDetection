@@ -1,219 +1,149 @@
 import os
-import random
+import time
 from collections import Counter
-from timeit import default_timer as timer
+from dataclasses import dataclass
+from operator import itemgetter
+from random import choices, randint
 
 def clear_console():
-    """Macro to clear the console."""
+    """Macro to clear the console"""
     os.system("cls" if os.name == "nt" else "clear")
 
-def red(text):
-    """Macro to change the text color to red."""
-    return "\033[31m" + text + "\033[0m"
-
 def green(text):
-    """Macro to change the text color to green."""
+    """Macro to change the text color to green using ANSI escape codes"""
     return "\033[32m" + text + "\033[0m"
 
-def cross(number):
-    """Macro for more readable concatination."""
-    return str(number) + "x" + str(number)
-
-def seconds(time):
-    """Macro to format the time."""
-    return "[{:.0f}ms]".format(time*1000) if time < 1 else "[{:.2f}s]".format(time)
-
-def execute_timed(function, *args, message=None):
-    """Macro for timed function calls with an optional message. 
-    Returns the time or the return value of the function if available."""
-    if message:
-        print("  " + message + "...", end=" ", flush=True)
-    else:
-        print("  Starting timed function '" + str(function.__name__) + "'...")
-    start = timer()
-    value = function(*args)
-    end = timer()
-    time = end - start
-    if message:
-        print("Done! " + seconds(time))
-    else:
-        print("  Timed function '" + str(function.__name__) + "' done! " + seconds(time))
-    return time if value is None else value
-
+@dataclass
 class Cluster:
-    def __init__(self, position, size=1):
-        self.x = position['x']  # top left corner
-        self.y = position['y']
-        self.size = size
-        self.area = set()  # a collection of all coordinates
-        for y in range(self.y, self.y + self.size):
-            for x in range(self.x, self.x + self.size):
-                self.area.add((x, y))
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+    size: int
 
-def filter_overlap(clusters):
-    """Returns a list of clusters that do not intersect. Bigger clusters are dominant."""
-    filtered_clusters = set()
-    sorted_clusters = sorted(clusters, key=lambda x: x.size, reverse=True)
-    for cluster in sorted_clusters:
-        if cluster in filtered_clusters:
-            continue
-        for compare in sorted_clusters:
-            if compare in filtered_clusters or compare is cluster:
-                continue
-            if cluster.area.intersection(compare.area):
-                if cluster.size < compare.size:
-                    filtered_clusters.add(cluster)
-                    break
-                else:
-                    filtered_clusters.add(compare)
-    return [cluster for cluster in clusters if cluster not in filtered_clusters]
+def make_matrix(size, weights=(0.5, 0.5)):
+    values = ('0', '1')
+    return [choices(values, weights=weights, k=size) for _ in range(size)]
 
-def check_cluster_size(matrix, position, size):
-    """Calculates and returns the size of a cluster."""
-    if size > 0:
-        for y in range(position['y'] + 1, position['y'] + size):
-            for x in range(position['x'], position['x'] + size):
-                if matrix[y][x] == "O":
-                    new_size = x - position['x']
-                    if new_size == 0:
-                        new_size = y - position['y']
-                        return new_size
-                    return check_cluster_size(matrix, position, new_size)
-        return size
+def get_clusters(matrix, min_size=2, max_only=True):
+    """Return a list of all clusters of the maximum size"""
+    def all_high(n, start, end):
+        n &= (1 << (end + 1)) - 1
+        n >>= start
+        return not n ^ ((1 << (end - start + 1)) - 1)
 
-def get_clusters(matrix, min_required_size):
-    """Returns a list of all square clusters."""
-    # count the consecutive occurrences of 'X' in one line until an 'O' or the edge is reached
-    # check the cluster size based on that amount as it is the potential side length of a cluster
-    if not matrix:
-        return []
-    if min_required_size < 1:
-        min_required_size = 1
+    size = len(matrix)
+    # The string is reversed since bit indexing will start from the right
+    int_matrix = [int(''.join(row)[::-1], base=2) for row in matrix]
     clusters = []
-    matrix_size = len(matrix)
-    for y in range(matrix_size):
-        x = 0
-        position = None
-        assumed_size = 0
-        edge_reached = False
-        while x < matrix_size:
-            if matrix[y][x] == "X":
-                if not position:
-                    position = {'x': x, 'y': y}
-                assumed_size += 1
-                if assumed_size is matrix_size - position['x'] or assumed_size is matrix_size - position['y']:
-                    edge_reached = True
-            if (matrix[y][x] == "O" and assumed_size) or edge_reached:
-                if assumed_size >= min_required_size:
-                    actual_size = check_cluster_size(matrix, position, assumed_size)
-                    if actual_size >= min_required_size:
-                        cluster = Cluster(position, actual_size)
-                        clusters.append(cluster)
-                x = position['x']
-                position = None
-                assumed_size = 0
-                edge_reached = False
-            x += 1
+    min_size -= 1
+    max_size = min_size
+    for y1 in range(size - min_size + 1):
+        for x1 in range(size - min_size + 1):
+            for y2, x2 in zip(range(y1 + min_size, size), range(x1 + min_size, size)):
+                if (
+                    all(all_high(int_matrix[i], x1, x2) for i in range(y1, y2 + 1))
+                    or all(all_high(~int_matrix[i], x1, x2) for i in range(y1, y2 + 1))
+                ):
+                    if not max_only or y2 - y1 == max_size:
+                        clusters.append(Cluster(x1, y1, x2, y2, x2 - x1 + 1))
+                    elif y2 - y1 > max_size:
+                        max_size = y2 - y1
+                        clusters.clear()
+                        clusters.append(Cluster(x1, y1, x2, y2, x2 - x1 + 1))
+                else:
+                    # There's no need checking larger squares starting at (x1, y1)
+                    break
     return clusters
 
-def make_matrix(size, x_frequency=1):
-    """Returns a 2D list containing randomly distributed 'X' and 'O'."""
-    return [[random.choices("XO", [x_frequency, 1]).pop() for _ in range(size)] for _ in range(size)]
-
-def print_matrix(matrix, clusters=None):
-    """Prints out a matrix with the option to color certain areas red."""
-    output = ""
-    for y, line in enumerate(matrix):
-        output += "\n  "
-        for x, element in enumerate(line):
-            if not clusters:
-                output += element + " "
-            else:
-                for cluster in clusters:
-                    if (x, y) in cluster.area:
-                        output += red(element + " ")
+def print_result(matrix, clusters, overlap=False):
+    if not overlap:
+        print(f"Cleaning up overlapping clusters...", end=' ', flush=True)
+        start = time.process_time_ns()
+        i = 0
+        while i < len(clusters) - 1:
+            a = clusters[i]
+            j = i + 1
+            while j < len(clusters):
+                b = clusters[j]
+                if not (a.y2 < b.y1 or a.y1 > b.y2 or a.x2 < b.x1 or a.x1 > b.x2):
+                    if a.size < b.size:
+                        del clusters[i]
                         break
+                    else:
+                        del clusters[j]
                 else:
-                    output += element + " "
-    print(output + "\n")
+                    j += 1
+            else:
+                i += 1
+        print(f"Done in {(time.process_time_ns() - start) / 1000000:.2f}ms!")
 
-def print_result(matrix, clusters, show_all_clusters=False):
-    """Prints out a summary of the results as well as the matrix itself while highlighting possible clusters."""
-    print("")
-    if not clusters:
-        print(red("  No clusters found!"))
-        print_matrix(matrix)
+        counts = Counter()
+        # matrix = [bytearray(''.join(row), "ascii") for row in matrix]
+        for c in clusters:
+            counts[c.size] += 1
+            x = randint(1, 7)
+            for i in range(c.y1, c.y2 + 1):
+                row  = matrix[i]
+                row[c.x1] = "\033[4%dm" % x + row[c.x1]
+                row[c.x2] += "\033[0m"
     else:
-        cluster_counts = Counter(cluster.size for cluster in clusters)
-        for size, amount in sorted(cluster_counts.items()):
-            print(green("  Found " + str(amount) + " " + cross(size) + " cluster" + ("s" if amount > 1 else "") + "!"))
-        if show_all_clusters:
-            print_matrix(matrix, clusters)
-        else:
-            max_size = max(cluster_counts)
-            print_matrix(matrix, [cluster for cluster in clusters if cluster.size is max_size])
+        ...
 
-def run(matrix_size=13, show_all_clusters=False, no_overlap=True, cluster_min_size=3, x_frequency=5):
-    """Creates one random matrix, finds square clusters and prints the results."""
-    print("")
-    matrix = execute_timed(make_matrix, matrix_size, x_frequency, 
-                           message="Generating random " + cross(matrix_size) + " matrix containing 'X' and 'O'")
-    clusters = execute_timed(get_clusters, matrix, cluster_min_size, 
-                             message="Searching for square shaped clusters that are at least " + cross(cluster_min_size))
-    if no_overlap:
-        clusters = execute_timed(filter_overlap, clusters, message="Filtering overlapping clusters")
-    print_result(matrix, clusters, show_all_clusters)
+    print()
+    for size, count in sorted(counts.items(), key=itemgetter(0)):
+        print(green(f"Found {count} {size}x{size} clusters!"))
+    print()
+    print('\n'.join(' '.join(row) for row in matrix))
 
-def performance_test(cases=15, runs=3, start_size=10, increment=10):
-    """Executes a set of test cases, calculates the average runtimes and prints out the timings."""
-    print("\n  Running performance test...\n")
-    results = {}
-    for case in range(cases):
-        size = start_size + case * increment
-        results[size] = []
-        for _ in range(runs):
-            results[size].append(execute_timed(run, size))
-            print("\n " + "="*(size*2+1 if size > 34 else 69) + "\n")
-    clear_console()
-    print(green("\n  Performance test results:\n"))
-    print("  There are {} test cases and every case ran {} times.".format(cases, runs))
-    print("  The size was incremented by {} for every new case.\n".format(increment))
-    print("  Average times:\n")
-    for case, times in results.items():
-        average = sum(times) / len(times)
-        format_distance = str(len(str(cases * increment if cases > 1 else start_size)) * 2 + 1)
-        print(("  {:>" + format_distance + "} -> ").format(cross(case)) + seconds(average)[1:-1])
-    print("")
+def run(size, min_size=2, weights=(0.5, 0.5), max_only=True, overlap=False):
+    # clear_console()  # clearing once can fix ANSI escape codes on windows
+    print("Clusters are " + green("fun"))
 
-def print_menu():
-    print("\n  \u2554" + "\u2550"*22 + "\u2557\n"
-          + "  \u2551         MENU         \u2551\n"
-          + "  \u255F" + "\u2500"*22 + "\u2562\n"
-          + "  \u2551 [1] Run once         \u2551\n"
-          + "  \u2551 [2] Performance test \u2551\n"
-          + "  \u2551 [3] Help             \u2551\n"
-          + "  \u2551 [4] Quit             \u2551\n"
-          + "  \u2551                      \u2551\n"
-          + "  \u2551 Choice:              \u2551\n"
-          + "  \u255A" + "\u2550"*22 + "\u255D", end=" ", flush=True)
-    
-def print_help():
-    print("\n   1 -> " + str(run.__doc__) + "\n"
-          + "   2 -> " + str(performance_test.__doc__) + "\n"
-          + "   3 -> Prints a description of the options.\n"
-          + "   4 -> Ends the program.")
+    print(f"Generating a {size}x{size} matrix...", end=' ', flush=True)
+    start = time.process_time_ns()
+    matrix = make_matrix(size, weights)
+    print(f"Done in {(time.process_time_ns() - start) / 1000000:.2f}ms!")
+
+    print(
+        "Getting",
+        "largest" if max_only else "all",
+        f"clusters (above {min_size}x{min_size}) in the matrix...",
+        end=' ',
+        flush=True,
+    )
+    start = time.process_time_ns()
+    clusters = get_clusters(matrix, min_size, max_only)
+    print(f"Done in {(time.process_time_ns() - start) / 1000000:.2f}ms!")
+
+    print_result(matrix, clusters, overlap)
+
 
 if __name__ == "__main__":
-    clear_console()  # clearing once can fix ANSI escape codes on windows
     while True:
-        print_menu()
-        choice = input("\u001b[1A\u001b[15D")  # move cursor
-        clear_console()
-        if choice == "1":
-            run()  # add parameters here
-        elif choice == "2":
-            performance_test()  # add parameters here
-        elif choice == "3":
-            print_help()
-        elif choice == "4":
-            break  # end program
+        try:
+            choice = int(input(
+                "1 -> Run\n"
+                "2 -> Quit\n"
+                "Choice: "
+                ))
+        except ValueError:
+            continue
+
+        if 1 <= choice <= 2:
+            print()
+            if choice == 1:
+                size = input("Matrix size (min=10): ")
+                if not size.isdigit() or int(size) < 10:
+                    continue
+                size = int(size)
+                min_size = input(f"Minimum cluster size (min=2, max={size}): ")
+                if not min_size.isdigit() or not 1 < int(min_size) <= size:
+                    continue
+                max_only = input("All clusters (y/N)? ").lower() != "y"
+                overlap = input("Overlap (y/N)? ").lower() == "y"
+                print()
+                run(size, int(min_size), (0.2, 0.8), max_only, overlap)
+            elif choice == 2:
+                break
+        print()
