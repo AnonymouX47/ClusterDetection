@@ -112,10 +112,10 @@ def print_result(matrix, clusters, overlap=False):
             while j < len(clusters):
                 b = clusters[j]
                 if b in a:
-                    del clusters[i]
+                    del clusters[j]
                     break
                 elif a in b:
-                    del clusters[j]
+                    del clusters[i]
                 else:
                     j += 1
             else:
@@ -191,6 +191,7 @@ def performance_test(cases=15, runs=3, start_size=10, increment=10):
 
 
 if __name__ == "__main__":
+    first_time = True
     while True:
         try:
             choice = int(input(
@@ -205,15 +206,17 @@ if __name__ == "__main__":
         clear_console()  # clearing once can fix ANSI escape codes on windows
         if 1 <= choice <= 3:
             if choice == 1:
-                size = input("Matrix size (min=10): ")
-                if not size.isdigit() or int(size) < 10:
-                    continue
-                size = int(size)
-                min_size = input(f"Minimum cluster size (min=2, max={size}): ")
-                if not min_size.isdigit() or not 1 < int(min_size) <= size:
-                    continue
-                max_only = input("All clusters (y/N)? ").lower() != "y"
-                overlap = input("Overlap (y/N)? ").lower() == "y"
+                if first_time or input("Use previous parameters (y/N)? ").lower() != "y":
+                    first_time = False
+                    size = input("Matrix size (min=10): ")
+                    if not size.isdigit() or int(size) < 10:
+                        continue
+                    size = int(size)
+                    min_size = input(f"Minimum cluster size (min=2, max={size}): ")
+                    if not min_size.isdigit() or not 1 < int(min_size) <= size:
+                        continue
+                    max_only = input("All clusters (y/N)? ").lower() != "y"
+                    overlap = input("Overlap (y/N)? ").lower() == "y"
                 print()
                 run(size, int(min_size), max_only, overlap)
             elif choice == 2:
