@@ -9,9 +9,11 @@ def clear_console():
     """Macro to clear the console"""
     os.system("cls" if os.name == "nt" else "clear")
 
+
 def green(text):
     """Macro to change the text color to green using ANSI escape codes"""
     return "\033[32m" + text + "\033[0m"
+
 
 @dataclass
 class Cluster:
@@ -21,9 +23,21 @@ class Cluster:
     y2: int
     size: int
 
+    def __contains__(self, other):
+        if not isinstance(other, __class__):
+            return NotImplemented
+        return (
+            other.y1 >= self.y1
+            and other.y2 <= self.y2
+            and other.x1 >= self.x1
+            and other.x2 <= self.x2
+        )
+
+
 def make_matrix(size, weights=(0.5, 0.5)):
     values = ('0', '1')
     return [choices(values, weights=weights, k=size) for _ in range(size)]
+
 
 def get_clusters(matrix, min_size=2, max_only=True):
     """Return a list of all clusters of the maximum size"""
@@ -56,7 +70,10 @@ def get_clusters(matrix, min_size=2, max_only=True):
                     break
     return clusters
 
+
 def print_result(matrix, clusters, overlap=False):
+    counts = Counter()
+
     if not overlap:
         print(f"Cleaning up overlapping clusters...", end=' ', flush=True)
         start = time.process_time_ns()
@@ -78,23 +95,47 @@ def print_result(matrix, clusters, overlap=False):
                 i += 1
         print(f"Done in {(time.process_time_ns() - start) / 1000000:.2f}ms!")
 
-        counts = Counter()
-        # matrix = [bytearray(''.join(row), "ascii") for row in matrix]
         for c in clusters:
             counts[c.size] += 1
-            x = randint(1, 7)
+            x = randint(1, 6)
             for i in range(c.y1, c.y2 + 1):
-                row  = matrix[i]
+                row = matrix[i]
                 row[c.x1] = "\033[4%dm" % x + row[c.x1]
                 row[c.x2] += "\033[0m"
     else:
-        ...
+        print(f"Cleaning up completely overlapped clusters...", end=' ', flush=True)
+        start = time.process_time_ns()
+        i = 0
+        while i < len(clusters) - 1:
+            a = clusters[i]
+            j = i + 1
+            while j < len(clusters):
+                b = clusters[j]
+                if b in a:
+                    del clusters[i]
+                    break
+                elif a in b:
+                    del clusters[j]
+                else:
+                    j += 1
+            else:
+                i += 1
+        print(f"Done in {(time.process_time_ns() - start) / 1000000:.2f}ms!")
+
+        for c in clusters:
+            counts[c.size] += 1
+            x = randint(1, 6)
+            for i in range(c.y1, c.y2 + 1):
+                row = matrix[i]
+                for j in range(c.x1, c.x2 + 1):
+                    row[j] = "\033[3%dm" % x + row[j] + "\033[0m"
 
     print()
     for size, count in sorted(counts.items(), key=itemgetter(0)):
         print(green(f"Found {count} {size}x{size} clusters!"))
     print()
     print('\n'.join(' '.join(row) for row in matrix))
+
 
 def run(size, min_size=2, max_only=True, overlap=False, weights=(0.2, 0.8)):
     # clear_console()  # clearing once can fix ANSI escape codes on windows
@@ -117,6 +158,7 @@ def run(size, min_size=2, max_only=True, overlap=False, weights=(0.2, 0.8)):
     print(f"Done in {(time.process_time_ns() - start) / 1000000:.2f}ms!")
 
     print_result(matrix, clusters, overlap)
+
 
 def performance_test(cases=15, runs=3, start_size=10, increment=10):
     """Executes a set of test cases, calculates the average runtimes and prints out the timings."""
