@@ -128,7 +128,11 @@ def print_result(matrix, clusters, overlap=False):
             for i in range(c.y1, c.y2 + 1):
                 row = matrix[i]
                 for j in range(c.x1, c.x2 + 1):
-                    row[j] = "\033[3%dm" % x + row[j] + "\033[0m"
+                    # Re-colorizing is redundant and just adds unnecessary extra
+                    # processing and characters, since the it's innermost color
+                    # (which was the first to be added) that will be displayed.
+                    if "\033" not in row[j]:
+                        row[j] = "\033[3%dm" % x + row[j] + "\033[0m"
 
     print()
     for size, count in sorted(counts.items(), key=itemgetter(0)):
@@ -138,7 +142,6 @@ def print_result(matrix, clusters, overlap=False):
 
 
 def run(size, min_size=2, max_only=True, overlap=False, weights=(0.2, 0.8)):
-    # clear_console()  # clearing once can fix ANSI escape codes on windows
     print("Clusters are " + green("fun"))
 
     print(f"Generating a {size}x{size} matrix...", end=' ', flush=True)
@@ -173,10 +176,13 @@ def performance_test(cases=15, runs=3, start_size=10, increment=10):
             results[size].append((time.process_time_ns() - start) / 1000000)
         size += increment
     clear_console()
-    print(green("\n  Performance test results:\n"))
-    print("  There are {} test cases and every case ran {} times.".format(cases, runs))
-    print("  The size was incremented by {} for every new case.\n".format(increment))
-    print("  Average times:\n")
+    print(
+        green("\n  Performance test results:\n"),
+        "  There are {} test cases and every case ran {} times.".format(cases, runs),
+        "  The size was incremented by {} for every new case.\n".format(increment),
+        "  Average times:\n",
+        sep='\n',
+    )
     for size, times in results.items():
         average = sum(times) / len(times)
         format_distance = len(str(start_size + (cases - 1) * increment)) * 2 + 1
@@ -196,8 +202,8 @@ if __name__ == "__main__":
         except ValueError:
             continue
 
+        clear_console()  # clearing once can fix ANSI escape codes on windows
         if 1 <= choice <= 3:
-            print()
             if choice == 1:
                 size = input("Matrix size (min=10): ")
                 if not size.isdigit() or int(size) < 10:
