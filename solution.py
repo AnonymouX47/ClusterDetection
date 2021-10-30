@@ -96,7 +96,7 @@ def print_result(matrix, clusters, overlap=False):
     print()
     print('\n'.join(' '.join(row) for row in matrix))
 
-def run(size, min_size=2, weights=(0.5, 0.5), max_only=True, overlap=False):
+def run(size, min_size=2, max_only=True, overlap=False, weights=(0.2, 0.8)):
     # clear_console()  # clearing once can fix ANSI escape codes on windows
     print("Clusters are " + green("fun"))
 
@@ -118,19 +118,43 @@ def run(size, min_size=2, weights=(0.5, 0.5), max_only=True, overlap=False):
 
     print_result(matrix, clusters, overlap)
 
+def performance_test(cases=15, runs=3, start_size=10, increment=10):
+    """Executes a set of test cases, calculates the average runtimes and prints out the timings."""
+    print("\n  Running performance test...\n")
+    results = {}
+    size = start_size
+    for case in range(cases):
+        results[size] = []
+        for _ in range(runs):
+            start = time.process_time_ns()
+            run(size, 3)
+            results[size].append((time.process_time_ns() - start) / 1000000)
+        size += increment
+    clear_console()
+    print(green("\n  Performance test results:\n"))
+    print("  There are {} test cases and every case ran {} times.".format(cases, runs))
+    print("  The size was incremented by {} for every new case.\n".format(increment))
+    print("  Average times:\n")
+    for size, times in results.items():
+        average = sum(times) / len(times)
+        format_distance = len(str(start_size + (cases - 1) * increment)) * 2 + 1
+        print("  {:>{}} -> {:.2f}ms".format(f"{size}x{size}", format_distance, average))
+    print()
+
 
 if __name__ == "__main__":
     while True:
         try:
             choice = int(input(
                 "1 -> Run\n"
-                "2 -> Quit\n"
+                "2 -> Performace Test\n"
+                "3 -> Quit\n"
                 "Choice: "
                 ))
         except ValueError:
             continue
 
-        if 1 <= choice <= 2:
+        if 1 <= choice <= 3:
             print()
             if choice == 1:
                 size = input("Matrix size (min=10): ")
@@ -143,7 +167,9 @@ if __name__ == "__main__":
                 max_only = input("All clusters (y/N)? ").lower() != "y"
                 overlap = input("Overlap (y/N)? ").lower() == "y"
                 print()
-                run(size, int(min_size), (0.2, 0.8), max_only, overlap)
+                run(size, int(min_size), max_only, overlap)
             elif choice == 2:
+                performance_test()
+            elif choice == 3:
                 break
         print()
